@@ -106,6 +106,7 @@ if ticker:
 # Bottom-right page annotation
 # ------------------------------
 st.markdown(
-    "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
+    "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri</div>",
+    "<div style='text-align: left; color: gray; font-size:12px;'2025©</div>",
     unsafe_allow_html=True
 )
