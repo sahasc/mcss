@@ -1,11 +1,11 @@
-# monte_carlo_streamlit_interactive_page_annotation.py
+# monte_carlo_streamlit_highcontrast.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-st.title("Monte Carlo Stock Price Predictor (Interactive & Enhanced Visualization)")
+st.title("Monte Carlo Stock Price Predictor (Interactive & High Contrast)")
 
 # ------------------------------
 # User input
@@ -16,6 +16,7 @@ days = st.slider("Number of trading days to simulate:", 30, 504, 252)
 training_years = st.slider("Years of historical data for drift/volatility:", 1, 10, 3)
 
 chart_bg_color = "#f5f5f5"  # light gray background
+axis_color = "#111111"       # dark axis and label color
 
 if ticker:
     try:
@@ -61,7 +62,7 @@ if ticker:
                 st.write(f"Simulated 1Y avg return: {avg_sim_return:.2f}%")
 
             # ------------------------------
-            # Monte Carlo Paths Plot (Stacked)
+            # Monte Carlo Paths Plot
             # ------------------------------
             fig_paths = go.Figure()
             final_prices = simulations[-1, :]
@@ -82,9 +83,11 @@ if ticker:
 
             fig_paths.update_layout(title=f"Monte Carlo Simulation ({num_simulations} paths)",
                                     xaxis_title="Days", yaxis_title="Price",
+                                    xaxis=dict(color=axis_color), yaxis=dict(color=axis_color),
+                                    title_font=dict(color=axis_color),
                                     hovermode="x unified",
                                     plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
-                                    font=dict(color="black"))
+                                    font=dict(color=axis_color))
             st.plotly_chart(fig_paths, use_container_width=True)
 
             # ------------------------------
@@ -95,8 +98,10 @@ if ticker:
             fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
             fig_hist.update_layout(title=f"Distribution of Final Prices",
                                    xaxis_title="Price", yaxis_title="Frequency",
+                                   xaxis=dict(color=axis_color), yaxis=dict(color=axis_color),
+                                   title_font=dict(color=axis_color),
                                    plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
-                                   font=dict(color="black"))
+                                   font=dict(color=axis_color))
             st.plotly_chart(fig_hist, use_container_width=True)
 
     except Exception as e:
@@ -106,6 +111,6 @@ if ticker:
 # Bottom-right page annotation
 # ------------------------------
 st.markdown(
-    "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
+    f"<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
     unsafe_allow_html=True
 )
