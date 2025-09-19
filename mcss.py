@@ -1,177 +1,102 @@
-# mcss.py
-import streamlit as st
+import yfinance as yf
 import numpy as np
 import pandas as pd
-import yfinance as yf
-import plotly.graph_objects as go
-import datetime
-from io import StringIO
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="MCSS - Monte Carlo Stock Simulator", layout="wide")
-st.title("MCSS — Monte Carlo Stock Price Simulator")
+# ------------------------------
+# Monte Carlo Stock Predictor
+# ------------------------------
 
-# ----------------- Sidebar controls -----------------
-with st.sidebar:
-    st.header("Simulation settings")
-    ticker = st.text_input("Ticker (e.g. AAPL, RBLX)", value="AAPL").upper().strip()
-    simulation_days = st.slider("Days to simulate", min_value=30, max_value=730, value=252, step=1)
-    num_simulations = st.slider("Number of simulations", min_value=100, max_value=2000, value=1000, step=100)
-    training_days = st.slider("Days to estimate drift/vol", min_value=30, max_value=1000, value=252, step=1)
-    top_paths_to_plot = st.slider("Number of highlighted likely paths", min_value=3, max_value=50, value=20, step=1)
-    show_percentile_bands = st.checkbox("Show percentile cones (10/25/50/75/90)", value=True)
-    run_button = st.button("Run simulation")
+def monte_carlo_simulation(ticker, num_simulations=200, days=252, training_years=3):
+    """
+    Runs Monte Carlo simulation with backtest accuracy and percentile bands.
+    """
 
-# ----------------- Helper: fetch & cache historical data -----------------
-@st.cache_data(ttl=3600)
-def fetch_history(ticker, start):
-    df = yf.download(ticker, start=start, end=str(datetime.date.today()), auto_adjust=True)
-    return df
+    # Download historical data
+    data = yf.download(ticker, period=f"{training_years}y")
+    if data.empty:
+        print(f"No historical data found for {ticker}. Try another ticker.")
+        return
 
-# ----------------- Run when user clicks -----------------
-if run_button:
-    if not ticker:
-        st.error("Please enter a ticker symbol.")
-        st.stop()
+    close_prices = data["Close"]
+    log_returns = np.log(1 + close_prices.pct_change().dropna())
 
-    # fetch history (use training_days + a bit of headroom)
-    start_date = (datetime.date.today() - datetime.timedelta(days=training_days * 2)).isoformat()
-    hist = fetch_history(ticker, start=start_date)
-    if hist is None or hist.empty:
-        st.error(f"No historical data found for {ticker}. Try another ticker.")
-        st.stop()
+    # Estimate drift and volatility
+    mu = log_returns.mean()
+    sigma = log_returns.std()
 
-    close = hist["Close"].dropna()
-    if len(close) < 10:
-        st.error("Not enough data to estimate parameters.")
-        st.stop()
+    # Starting price
+    S0 = float(close_prices.iloc[-1])
+    print(f"Starting price for {ticker}: {S0:.2f}")
+    print(f"Estimated drift: {mu*252:.2%}, volatility: {sigma*np.sqrt(252):.2%}")
 
-    # prepare returns and parameters (use most recent `training_days`)
-    log_returns = np.log(close / close.shift(1)).dropna()
-    recent_returns = log_returns[-training_days:]
-    if recent_returns.empty:
-        st.error("Not enough recent returns to estimate drift/volatility.")
-        st.stop()
+    # Run simulations
+    simulations = np.zeros((days, num_simulations))
+    for i in range(num_simulations):
+        prices = [S0]
+        for d in range(1, days):
+            shock = np.random.normal(mu, sigma)
+            prices.append(prices[-1] * np.exp(shock))
+        simulations[:, i] = prices
 
-    annual_drift = float(recent_returns.mean() * 252)
-    annual_volatility = float(recent_returns.std() * np.sqrt(252))
-    S0 = float(close.iloc[-1])
+    # Calculate percentiles
+    percentiles = np.percentile(simulations, [10, 50, 90], axis=1)
 
-    st.markdown(f"**Current price ({ticker})**: ${S0:,.2f}")
-    st.markdown(f"**Estimated annual drift:** {annual_drift:.2%} • **volatility:** {annual_volatility:.2%}")
+    # ------------------------------
+    # Backtest Accuracy (optional)
+    # ------------------------------
+    backtest_days = 252  # compare 1 year back
+    if len(close_prices) > backtest_days:
+        hist_start = float(close_prices.iloc[-backtest_days])
+        hist_end = float(close_prices.iloc[-1])
+        hist_return = (hist_end / hist_start - 1) * 100
 
-    # ----------------- Vectorized Monte Carlo -----------------
-    dt = 1 / 252
-    # We'll build increments of shape (simulation_days, num_simulations)
-    # Generate Z ~ N(0,1)
-    Z = np.random.normal(size=(simulation_days, num_simulations))
-    # Compute increments for GBM: (mu - 0.5 sigma^2) dt + sigma sqrt(dt) Z_t
-    increments = (annual_drift - 0.5 * annual_volatility**2) * dt + annual_volatility * np.sqrt(dt) * Z
-    # Set first row increments to 0 so day 0 = S0
-    increments[0, :] = 0.0
-    # Cumulative log price: log(S0) + cumsum(increments)
-    logS = np.log(S0) + np.cumsum(increments, axis=0)
-    all_paths = np.exp(logS)  # shape: (simulation_days, num_simulations)
+        sim_end_prices = simulations[-1, :]
+        avg_sim_return = (np.mean(sim_end_prices) / S0 - 1) * 100
 
-    # ----------------- Statistics & selection -----------------
-    final_prices = all_paths[-1, :]
-    mean_final = np.mean(final_prices)
-    dist_from_mean = np.abs(final_prices - mean_final)
+        print(f"Historical 1Y return: {hist_return:.2f}%")
+        print(f"Simulated 1Y avg return: {avg_sim_return:.2f}%")
 
-    # Choose top likely paths (closest final price to mean)
-    top_k = min(top_paths_to_plot, num_simulations)
-    most_likely_idx = np.argsort(dist_from_mean)[:top_k]
-    highlight_paths = all_paths[:, most_likely_idx]
+    # ------------------------------
+    # Plotting
+    # ------------------------------
+    plt.figure(figsize=(12, 7))
 
-    # compute colors: normalized distances among chosen top_k
-    chosen_dist = dist_from_mean[most_likely_idx]
-    # smaller distance => more likely => greener -> val close to 0 -> green
-    normalized = (chosen_dist - chosen_dist.min()) / (chosen_dist.max() - chosen_dist.min() + 1e-9)
-    colors_rgb = [f"rgb({int(255*v)},{int(255*(1-v))},0)" for v in normalized]  # red->green mapping
+    # Color paths by final percentile
+    final_prices = simulations[-1, :]
+    ranks = pd.qcut(final_prices, num_simulations, labels=False)
 
-    # mean path and std path for bands
-    mean_path = np.mean(all_paths, axis=1)
-    std_path = np.std(all_paths, axis=1)
+    for i in range(num_simulations):
+        color = plt.cm.coolwarm(ranks[i] / num_simulations)  # red = low, blue = high
+        plt.plot(simulations[:, i], color=color, alpha=0.2)
 
-    # percentiles
-    percentiles = [10, 25, 50, 75, 90]
-    percentile_paths = np.percentile(all_paths, percentiles, axis=1)  # shape (len(percentiles), days)
+    # Overlay percentile bands
+    plt.plot(percentiles[1], "k--", linewidth=2, label="Median")
+    plt.plot(percentiles[0], "g--", linewidth=1.5, label="10th Percentile")
+    plt.plot(percentiles[2], "r--", linewidth=1.5, label="90th Percentile")
 
-    # ----------------- Build interactive Plotly figure -----------------
-    days = np.arange(simulation_days)
+    plt.axhline(y=S0, color="blue", linestyle="--", linewidth=1, label="Starting Price")
 
-    fig = go.Figure()
+    plt.title(f"Monte Carlo Simulation for {ticker} ({num_simulations} paths, {days} days)")
+    plt.xlabel("Days")
+    plt.ylabel("Price")
+    plt.legend()
+    plt.show()
 
-    # optional: percentile cones (outer first then inner so shading stacks nicely)
-    if show_percentile_bands:
-        # top 90 then 10 fill
-        fig.add_trace(go.Scatter(
-            x=days, y=percentile_paths[4], mode='lines',
-            line=dict(width=0), showlegend=False, hoverinfo='skip'
-        ))
-        fig.add_trace(go.Scatter(
-            x=days, y=percentile_paths[0], mode='lines',
-            line=dict(width=0), fill='tonexty',
-            fillcolor='rgba(200,200,200,0.15)', showlegend=True, name='10-90 percentile', hoverinfo='skip'
-        ))
-        # 75-25 band
-        fig.add_trace(go.Scatter(x=days, y=percentile_paths[3], mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
-        fig.add_trace(go.Scatter(x=days, y=percentile_paths[1], mode='lines', line=dict(width=0), fill='tonexty',
-                                 fillcolor='rgba(150,150,150,0.2)', showlegend=True, name='25-75 percentile', hoverinfo='skip'))
+    # Histogram of final simulated prices
+    plt.figure(figsize=(10, 5))
+    plt.hist(simulations[-1, :], bins=30, color="skyblue", edgecolor="black")
+    plt.axvline(S0, color="blue", linestyle="--", label="Starting Price")
+    plt.title(f"Distribution of Final Prices after {days} days ({ticker})")
+    plt.xlabel("Price")
+    plt.ylabel("Frequency")
+    plt.legend()
+    plt.show()
 
-    # highlight top likely paths (green to red)
-    for i in range(top_k):
-        fig.add_trace(go.Scatter(
-            x=days,
-            y=highlight_paths[:, i],
-            mode='lines',
-            line=dict(color=colors_rgb[i], width=2),
-            name=f'Likely path {i+1}',
-            hovertemplate='Day %{x}: $%{y:.2f}<extra></extra>'
-        ))
 
-    # mean path dashed
-    fig.add_trace(go.Scatter(
-        x=days, y=mean_path, mode='lines',
-        line=dict(color='black', width=2, dash='dash'),
-        name='Expected mean path',
-        hovertemplate='Day %{x}: $%{y:.2f}<extra></extra>'
-    ))
-
-    # ±1 std band as shading
-    fig.add_trace(go.Scatter(x=days, y=mean_path + std_path, mode='lines', line=dict(width=0), showlegend=False, hoverinfo='skip'))
-    fig.add_trace(go.Scatter(x=days, y=mean_path - std_path, mode='lines', line=dict(width=0), fill='tonexty',
-                             fillcolor='rgba(100,100,100,0.15)', name='±1 Std Dev', hoverinfo='skip'))
-
-    # current price horizontal
-    fig.add_trace(go.Scatter(x=days, y=[S0] * simulation_days, mode='lines', line=dict(color='blue', dash='dash'),
-                             name='Current price', hovertemplate='Price: $%{y:.2f}<extra></extra>'))
-
-    fig.update_layout(title=f"Monte Carlo Future Price Prediction — {ticker}",
-                      xaxis_title="Days from today",
-                      yaxis_title="Price",
-                      hovermode="x unified",
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ----------------- Show summary statistics -----------------
-    st.markdown("### Summary statistics")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Simulated mean final price", f"${mean_final:,.2f}")
-    col2.metric("Simulated median final price", f"${np.median(final_prices):,.2f}")
-    col3.metric("Simulated std of final price", f"${np.std(final_prices):,.2f}")
-
-    # Percentage of simulated final prices within ±X% of mean (example)
-    pct_within_10 = np.mean(np.abs(final_prices - mean_final) <= 0.10 * mean_final) * 100
-    st.write(f"Percent of simulated finals within ±10% of mean: {pct_within_10:.1f}%")
-
-    # ----------------- Download simulated paths CSV -----------------
-    all_paths_df = pd.DataFrame(all_paths)
-    all_paths_df.index.name = "day"
-    csv = all_paths_df.to_csv(index=True)
-    st.download_button(
-        label="Download all simulated paths (CSV)",
-        data=csv,
-        file_name=f"{ticker}_simulated_paths.csv",
-        mime="text/csv"
-    )
+# ------------------------------
+# Run the Simulation
+# ------------------------------
+if __name__ == "__main__":
+    ticker = input("Enter a stock ticker (e.g., AAPL, RBLX, TSLA): ").upper()
+    monte_carlo_simulation(ticker)
