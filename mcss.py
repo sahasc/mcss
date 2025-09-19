@@ -1,11 +1,11 @@
-# monte_carlo_streamlit_interactive.py
+# monte_carlo_streamlit_interactive_lightbg.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-st.title("Monte Carlo Stock Price Predictor (Advanced Version with Interactive Charts)")
+st.title("Monte Carlo Stock Price Predictor (Interactive & Enhanced Visualization)")
 
 # ------------------------------
 # User input
@@ -14,6 +14,8 @@ ticker = st.text_input("Enter a stock ticker (e.g., AAPL, RBLX, TSLA):", value="
 num_simulations = st.slider("Number of simulations:", 50, 500, 200)
 days = st.slider("Number of trading days to simulate:", 30, 504, 252)
 training_years = st.slider("Years of historical data for drift/volatility:", 1, 10, 3)
+
+chart_bg_color = "#f5f5f5"  # light gray background
 
 if ticker:
     try:
@@ -59,38 +61,65 @@ if ticker:
                 st.write(f"Simulated 1Y avg return: {avg_sim_return:.2f}%")
 
             # ------------------------------
-            # Interactive Monte Carlo Paths
+            # Layout: Side by Side
             # ------------------------------
-            fig_paths = go.Figure()
-            final_prices = simulations[-1, :]
-            try:
-                ranks = pd.qcut(final_prices, num_simulations, labels=False)
-            except ValueError:
-                ranks = np.linspace(0, num_simulations-1, num_simulations)
+            col1, col2 = st.columns(2)
 
-            for i in range(num_simulations):
-                color = f"rgba({int(255*(1-ranks[i]/num_simulations))}, {int(255*(ranks[i]/num_simulations))}, 0, 0.3)"
-                fig_paths.add_trace(go.Scatter(y=simulations[:, i], mode='lines', line=dict(color=color), showlegend=False))
+            # Monte Carlo Paths Plot
+            with col1:
+                fig_paths = go.Figure()
+                final_prices = simulations[-1, :]
+                try:
+                    ranks = pd.qcut(final_prices, num_simulations, labels=False)
+                except ValueError:
+                    ranks = np.linspace(0, num_simulations-1, num_simulations)
 
-            # Add percentile lines
-            fig_paths.add_trace(go.Scatter(y=percentiles[1], mode='lines', line=dict(color='black', dash='dash'), name='Median'))
-            fig_paths.add_trace(go.Scatter(y=percentiles[0], mode='lines', line=dict(color='green', dash='dash'), name='10th Percentile'))
-            fig_paths.add_trace(go.Scatter(y=percentiles[2], mode='lines', line=dict(color='red', dash='dash'), name='90th Percentile'))
-            fig_paths.add_hline(y=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
+                for i in range(num_simulations):
+                    color = f"rgba({int(255*(1-ranks[i]/num_simulations))}, {int(255*(ranks[i]/num_simulations))}, 0, 0.3)"
+                    fig_paths.add_trace(go.Scatter(y=simulations[:, i], mode='lines', line=dict(color=color), showlegend=False))
 
-            fig_paths.update_layout(title=f"Monte Carlo Simulation for {ticker} ({num_simulations} paths, {days} days)",
-                                    xaxis_title="Days", yaxis_title="Price", hovermode="x unified")
-            st.plotly_chart(fig_paths, use_container_width=True)
+                # Add percentile lines
+                fig_paths.add_trace(go.Scatter(y=percentiles[1], mode='lines', line=dict(color='black', dash='dash'), name='Median'))
+                fig_paths.add_trace(go.Scatter(y=percentiles[0], mode='lines', line=dict(color='green', dash='dash'), name='10th Percentile'))
+                fig_paths.add_trace(go.Scatter(y=percentiles[2], mode='lines', line=dict(color='red', dash='dash'), name='90th Percentile'))
+                fig_paths.add_hline(y=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
 
-            # ------------------------------
-            # Interactive Histogram of Final Prices
-            # ------------------------------
-            fig_hist = go.Figure()
-            fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
-            fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
-            fig_hist.update_layout(title=f"Distribution of Final Prices after {days} days ({ticker})",
-                                   xaxis_title="Price", yaxis_title="Frequency")
-            st.plotly_chart(fig_hist, use_container_width=True)
+                # Add author text
+                fig_paths.add_annotation(
+                    text="Made by Sahas Chekuri 2025©",
+                    xref="paper", yref="paper",
+                    x=1, y=0, showarrow=False,
+                    font=dict(size=12, color=chart_bg_color),
+                    xanchor='right', yanchor='bottom'
+                )
+
+                fig_paths.update_layout(title=f"Monte Carlo Simulation ({num_simulations} paths)",
+                                        xaxis_title="Days", yaxis_title="Price",
+                                        hovermode="x unified",
+                                        plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
+                                        font=dict(color="black"))
+                st.plotly_chart(fig_paths, use_container_width=True)
+
+            # Histogram Plot
+            with col2:
+                fig_hist = go.Figure()
+                fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
+                fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
+
+                # Add author text
+                fig_hist.add_annotation(
+                    text="Made by Sahas Chekuri 2025©",
+                    xref="paper", yref="paper",
+                    x=1, y=0, showarrow=False,
+                    font=dict(size=12, color=chart_bg_color),
+                    xanchor='right', yanchor='bottom'
+                )
+
+                fig_hist.update_layout(title=f"Distribution of Final Prices",
+                                       xaxis_title="Price", yaxis_title="Frequency",
+                                       plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
+                                       font=dict(color="black"))
+                st.plotly_chart(fig_hist, use_container_width=True)
 
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
