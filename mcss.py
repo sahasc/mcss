@@ -1,4 +1,4 @@
-# monte_carlo_streamlit_highcontrast.py
+# monte_carlo_streamlit_highcontrast_labels.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -16,7 +16,7 @@ days = st.slider("Number of trading days to simulate:", 30, 504, 252)
 training_years = st.slider("Years of historical data for drift/volatility:", 1, 10, 3)
 
 chart_bg_color = "#f5f5f5"  # light gray background
-axis_color = "#111111"       # dark axis and label color
+axis_color = "#000000"       # black for axes, tick labels, and titles
 
 if ticker:
     try:
@@ -81,13 +81,15 @@ if ticker:
             fig_paths.add_trace(go.Scatter(y=percentiles[2], mode='lines', line=dict(color='red', dash='dash'), name='90th Percentile'))
             fig_paths.add_hline(y=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
 
-            fig_paths.update_layout(title=f"Monte Carlo Simulation ({num_simulations} paths)",
-                                    xaxis_title="Days", yaxis_title="Price",
-                                    xaxis=dict(color=axis_color), yaxis=dict(color=axis_color),
-                                    title_font=dict(color=axis_color),
-                                    hovermode="x unified",
-                                    plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
-                                    font=dict(color=axis_color))
+            fig_paths.update_layout(
+                title=dict(text=f"Monte Carlo Simulation ({num_simulations} paths)", font=dict(color=axis_color)),
+                xaxis=dict(title="Days", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
+                yaxis=dict(title="Price", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
+                hovermode="x unified",
+                plot_bgcolor=chart_bg_color,
+                paper_bgcolor=chart_bg_color,
+                font=dict(color=axis_color)
+            )
             st.plotly_chart(fig_paths, use_container_width=True)
 
             # ------------------------------
@@ -96,12 +98,15 @@ if ticker:
             fig_hist = go.Figure()
             fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
             fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
-            fig_hist.update_layout(title=f"Distribution of Final Prices",
-                                   xaxis_title="Price", yaxis_title="Frequency",
-                                   xaxis=dict(color=axis_color), yaxis=dict(color=axis_color),
-                                   title_font=dict(color=axis_color),
-                                   plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
-                                   font=dict(color=axis_color))
+
+            fig_hist.update_layout(
+                title=dict(text=f"Distribution of Final Prices", font=dict(color=axis_color)),
+                xaxis=dict(title="Price", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
+                yaxis=dict(title="Frequency", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
+                plot_bgcolor=chart_bg_color,
+                paper_bgcolor=chart_bg_color,
+                font=dict(color=axis_color)
+            )
             st.plotly_chart(fig_hist, use_container_width=True)
 
     except Exception as e:
@@ -111,6 +116,6 @@ if ticker:
 # Bottom-right page annotation
 # ------------------------------
 st.markdown(
-    f"<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
+    "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
     unsafe_allow_html=True
 )
