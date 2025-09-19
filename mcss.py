@@ -1,4 +1,4 @@
-# monte_carlo_streamlit_interactive_lightbg.py
+# monte_carlo_streamlit_interactive_page_annotation.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -61,65 +61,51 @@ if ticker:
                 st.write(f"Simulated 1Y avg return: {avg_sim_return:.2f}%")
 
             # ------------------------------
-            # Layout: Side by Side
+            # Monte Carlo Paths Plot (Stacked)
             # ------------------------------
-            col1, col2 = st.columns(2)
+            fig_paths = go.Figure()
+            final_prices = simulations[-1, :]
+            try:
+                ranks = pd.qcut(final_prices, num_simulations, labels=False)
+            except ValueError:
+                ranks = np.linspace(0, num_simulations-1, num_simulations)
 
-            # Monte Carlo Paths Plot
-            with col1:
-                fig_paths = go.Figure()
-                final_prices = simulations[-1, :]
-                try:
-                    ranks = pd.qcut(final_prices, num_simulations, labels=False)
-                except ValueError:
-                    ranks = np.linspace(0, num_simulations-1, num_simulations)
+            for i in range(num_simulations):
+                color = f"rgba({int(255*(1-ranks[i]/num_simulations))}, {int(255*(ranks[i]/num_simulations))}, 0, 0.3)"
+                fig_paths.add_trace(go.Scatter(y=simulations[:, i], mode='lines', line=dict(color=color), showlegend=False))
 
-                for i in range(num_simulations):
-                    color = f"rgba({int(255*(1-ranks[i]/num_simulations))}, {int(255*(ranks[i]/num_simulations))}, 0, 0.3)"
-                    fig_paths.add_trace(go.Scatter(y=simulations[:, i], mode='lines', line=dict(color=color), showlegend=False))
+            # Percentile lines
+            fig_paths.add_trace(go.Scatter(y=percentiles[1], mode='lines', line=dict(color='black', dash='dash'), name='Median'))
+            fig_paths.add_trace(go.Scatter(y=percentiles[0], mode='lines', line=dict(color='green', dash='dash'), name='10th Percentile'))
+            fig_paths.add_trace(go.Scatter(y=percentiles[2], mode='lines', line=dict(color='red', dash='dash'), name='90th Percentile'))
+            fig_paths.add_hline(y=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
 
-                # Add percentile lines
-                fig_paths.add_trace(go.Scatter(y=percentiles[1], mode='lines', line=dict(color='black', dash='dash'), name='Median'))
-                fig_paths.add_trace(go.Scatter(y=percentiles[0], mode='lines', line=dict(color='green', dash='dash'), name='10th Percentile'))
-                fig_paths.add_trace(go.Scatter(y=percentiles[2], mode='lines', line=dict(color='red', dash='dash'), name='90th Percentile'))
-                fig_paths.add_hline(y=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
+            fig_paths.update_layout(title=f"Monte Carlo Simulation ({num_simulations} paths)",
+                                    xaxis_title="Days", yaxis_title="Price",
+                                    hovermode="x unified",
+                                    plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
+                                    font=dict(color="black"))
+            st.plotly_chart(fig_paths, use_container_width=True)
 
-                # Add author text
-                fig_paths.add_annotation(
-                    text="Made by Sahas Chekuri 2025©",
-                    xref="paper", yref="paper",
-                    x=1, y=0, showarrow=False,
-                    font=dict(size=12, color=chart_bg_color),
-                    xanchor='right', yanchor='bottom'
-                )
-
-                fig_paths.update_layout(title=f"Monte Carlo Simulation ({num_simulations} paths)",
-                                        xaxis_title="Days", yaxis_title="Price",
-                                        hovermode="x unified",
-                                        plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
-                                        font=dict(color="black"))
-                st.plotly_chart(fig_paths, use_container_width=True)
-
+            # ------------------------------
             # Histogram Plot
-            with col2:
-                fig_hist = go.Figure()
-                fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
-                fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
-
-                # Add author text
-                fig_hist.add_annotation(
-                    text="Made by Sahas Chekuri 2025©",
-                    xref="paper", yref="paper",
-                    x=1, y=0, showarrow=False,
-                    font=dict(size=12, color=chart_bg_color),
-                    xanchor='right', yanchor='bottom'
-                )
-
-                fig_hist.update_layout(title=f"Distribution of Final Prices",
-                                       xaxis_title="Price", yaxis_title="Frequency",
-                                       plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
-                                       font=dict(color="black"))
-                st.plotly_chart(fig_hist, use_container_width=True)
+            # ------------------------------
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
+            fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
+            fig_hist.update_layout(title=f"Distribution of Final Prices",
+                                   xaxis_title="Price", yaxis_title="Frequency",
+                                   plot_bgcolor=chart_bg_color, paper_bgcolor=chart_bg_color,
+                                   font=dict(color="black"))
+            st.plotly_chart(fig_hist, use_container_width=True)
 
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
+
+# ------------------------------
+# Bottom-right page annotation
+# ------------------------------
+st.markdown(
+    "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
+    unsafe_allow_html=True
+)
