@@ -1,4 +1,4 @@
-# monte_carlo_streamlit_full.py
+# monte_carlo_streamlit_fixed.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -26,9 +26,9 @@ if ticker:
         else:
             close_prices = data["Close"]
             log_returns = np.log(1 + close_prices.pct_change().dropna())
-            mu = log_returns.mean()
-            sigma = log_returns.std()
-            S0 = float(close_prices.iloc[-1])
+            mu = float(log_returns.mean())
+            sigma = float(log_returns.std())
+            S0 = float(close_prices.tail(1).iloc[0])
 
             st.write(f"Starting price for {ticker}: {S0:.2f}")
             st.write(f"Estimated annualized drift: {mu*252:.2%}, volatility: {sigma*np.sqrt(252):.2%}")
@@ -92,7 +92,7 @@ if ticker:
             # Histogram of Final Prices
             # ------------------------------
             fig2, ax2 = plt.subplots(figsize=(10, 5))
-            hist = ax2.hist(simulations[-1, :], bins=30, color="skyblue", edgecolor="black")
+            ax2.hist(simulations[-1, :], bins=30, color="skyblue", edgecolor="black")
             ax2.axvline(S0, color="blue", linestyle="--", label="Starting Price")
             ax2.set_title(f"Distribution of Final Prices after {days} days ({ticker})")
             ax2.set_xlabel("Price")
