@@ -3,4 +3,4 @@ yfinance==0.2.43
 pandas==2.2.2
 numpy==1.26.4
 plotly==5.24.1
-import matplotlib.pyplot as plt
+matplotlib>=3.8
