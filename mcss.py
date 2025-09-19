@@ -1,4 +1,4 @@
-\# monte_carlo_streamlit_interactive.py
+# monte_carlo_streamlit_interactive.py
 import streamlit as st
 import yfinance as yf
 import numpy as np
