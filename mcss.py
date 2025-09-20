@@ -92,9 +92,7 @@ if ticker:
             )
             st.plotly_chart(fig_paths, use_container_width=True)
 
-            # ------------------------------
-            # Histogram Plot
-            # ------------------------------
+           
             fig_hist = go.Figure()
             fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
             fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
@@ -112,9 +110,6 @@ if ticker:
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
 
-# ------------------------------
-# Bottom-right page annotation
-# ------------------------------
 st.markdown(
     "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
     unsafe_allow_html=True
