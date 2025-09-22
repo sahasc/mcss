@@ -1,116 +1,104 @@
-# monte_carlo_streamlit_highcontrast_labels.py
-import streamlit as st
+import os
 import yfinance as yf
-import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
+import numpy as np
+import streamlit as st
+from dotenv import load_dotenv
+import openai
 
-st.title("Monte Carlo Stock Price Predictor (Interactive & High Contrast)")
+# ==============================
+# 🔑 Setup API Keys
+# ==============================
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# ------------------------------
-# User input
-# ------------------------------
-ticker = st.text_input("Enter a stock ticker (e.g., AAPL, RBLX, TSLA):", value="AAPL").upper()
-num_simulations = st.slider("Number of simulations:", 50, 500, 200)
-days = st.slider("Number of trading days to simulate:", 30, 504, 252)
-training_years = st.slider("Years of historical data for drift/volatility:", 1, 10, 3)
+if not openai.api_key:
+    raise ValueError("❌ Missing OPENAI_API_KEY. Please set it in your .env file.")
 
-chart_bg_color = "#f5f5f5"  # light gray background
-axis_color = "#000000"       # black for axes, tick labels, and titles
+# ==============================
+# 📊 Data Fetching
+# ==============================
+def fetch_data(ticker):
+    df = yf.download(ticker, start="2023-01-01", end="2025-01-01")
 
-if ticker:
-    try:
-        # ------------------------------
-        # Fetch historical data
-        # ------------------------------
-        data = yf.download(ticker, period=f"{training_years}y")
-        if data.empty:
-            st.error(f"No historical data found for {ticker}. Try another ticker.")
-        else:
-            close_prices = data["Close"]
-            log_returns = np.log(1 + close_prices.pct_change().dropna())
-            mu = float(log_returns.mean())
-            sigma = float(log_returns.std())
-            S0 = float(close_prices.tail(1).iloc[0])
+    # Moving Averages
+    df["MA_10"] = df["Close"].rolling(10).mean().ffill()
+    df["MA_50"] = df["Close"].rolling(50).mean().ffill()
 
-            st.write(f"Starting price for {ticker}: {S0:.2f}")
-            st.write(f"Estimated annualized drift: {mu*252:.2%}, volatility: {sigma*np.sqrt(252):.2%}")
+    # RSI Calculation
+    delta = df["Close"].diff().dropna()
+    gain = np.where(delta > 0, delta, 0)
+    loss = np.where(delta < 0, -delta, 0)
 
-            # ------------------------------
-            # Monte Carlo Simulation
-            # ------------------------------
-            simulations = np.zeros((days, num_simulations))
-            simulations[0] = S0
+    avg_gain = pd.Series(gain).rolling(14).mean().ffill()
+    avg_loss = pd.Series(loss).rolling(14).mean().ffill()
 
-            for t in range(1, days):
-                Z = np.random.standard_normal(num_simulations)
-                simulations[t] = simulations[t-1] * np.exp((mu - 0.5 * sigma**2) + sigma * Z)
+    rs = avg_gain / avg_loss
+    df.loc[delta.index, "RSI"] = 100 - (100 / (1 + rs))
 
-            percentiles = np.percentile(simulations, [10, 50, 90], axis=1)
+    return df
 
-            # ------------------------------
-            # Backtest Accuracy
-            # ------------------------------
-            backtest_days = 252
-            if len(close_prices) > backtest_days:
-                hist_start = float(close_prices.iloc[-backtest_days])
-                hist_end = float(close_prices.iloc[-1])
-                hist_return = (hist_end / hist_start - 1) * 100
-                sim_end_prices = simulations[-1, :]
-                avg_sim_return = (np.mean(sim_end_prices) / S0 - 1) * 100
-                st.write(f"Historical 1Y return: {hist_return:.2f}%")
-                st.write(f"Simulated 1Y avg return: {avg_sim_return:.2f}%")
+# ==============================
+# 📈 Simulation
+# ==============================
+def simulate_strategy(data):
+    last_price = data["Close"].iloc[-1]
+    returns = data["Close"].pct_change().dropna()
 
-            # ------------------------------
-            # Monte Carlo Paths Plot
-            # ------------------------------
-            fig_paths = go.Figure()
-            final_prices = simulations[-1, :]
-            try:
-                ranks = pd.qcut(final_prices, num_simulations, labels=False)
-            except ValueError:
-                ranks = np.linspace(0, num_simulations-1, num_simulations)
+    avg_return = returns.mean()
+    volatility = returns.std()
 
-            for i in range(num_simulations):
-                color = f"rgba({int(255*(1-ranks[i]/num_simulations))}, {int(255*(ranks[i]/num_simulations))}, 0, 0.3)"
-                fig_paths.add_trace(go.Scatter(y=simulations[:, i], mode='lines', line=dict(color=color), showlegend=False))
+    return {
+        "last_price": last_price,
+        "avg_return": avg_return,
+        "volatility": volatility,
+    }
 
-            # Percentile lines
-            fig_paths.add_trace(go.Scatter(y=percentiles[1], mode='lines', line=dict(color='black', dash='dash'), name='Median'))
-            fig_paths.add_trace(go.Scatter(y=percentiles[0], mode='lines', line=dict(color='green', dash='dash'), name='10th Percentile'))
-            fig_paths.add_trace(go.Scatter(y=percentiles[2], mode='lines', line=dict(color='red', dash='dash'), name='90th Percentile'))
-            fig_paths.add_hline(y=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
+# ==============================
+# 🤖 GPT Analysis
+# ==============================
+def analyze_with_gpt(sim_data):
+    prompt = f"""
+    Analyze the stock simulation data:
+    - Last Price: {sim_data['last_price']:.2f}
+    - Average Return: {sim_data['avg_return']:.2%}
+    - Volatility: {sim_data['volatility']:.2%}
 
-            fig_paths.update_layout(
-                title=dict(text=f"Monte Carlo Simulation ({num_simulations} paths)", font=dict(color=axis_color)),
-                xaxis=dict(title="Days", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
-                yaxis=dict(title="Price", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
-                hovermode="x unified",
-                plot_bgcolor=chart_bg_color,
-                paper_bgcolor=chart_bg_color,
-                font=dict(color=axis_color)
-            )
-            st.plotly_chart(fig_paths, use_container_width=True)
+    Provide a concise professional summary of the stock's performance.
+    """
 
-           
-            fig_hist = go.Figure()
-            fig_hist.add_trace(go.Histogram(x=simulations[-1, :], nbinsx=30, name='Final Prices', marker_color='skyblue'))
-            fig_hist.add_vline(x=S0, line_dash="dash", line_color="blue", annotation_text="Starting Price")
+    response = openai.chat.completions.create(
+        model="gpt-4o-mini",  # Lightweight GPT model
+        messages=[
+            {"role": "system", "content": "You are a financial analyst."},
+            {"role": "user", "content": prompt},
+        ],
+    )
 
-            fig_hist.update_layout(
-                title=dict(text=f"Distribution of Final Prices", font=dict(color=axis_color)),
-                xaxis=dict(title="Price", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
-                yaxis=dict(title="Frequency", title_font=dict(color=axis_color), tickfont=dict(color=axis_color), color=axis_color),
-                plot_bgcolor=chart_bg_color,
-                paper_bgcolor=chart_bg_color,
-                font=dict(color=axis_color)
-            )
-            st.plotly_chart(fig_hist, use_container_width=True)
+    return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
+# ==============================
+# 🌐 Streamlit App
+# ==============================
+def main():
+    st.title("📊 Market Condition Simulation System (MCSS)")
 
-st.markdown(
-    "<div style='text-align: right; color: gray; font-size:12px;'>Made by Sahas Chekuri 2025©</div>",
-    unsafe_allow_html=True
-)
+    ticker = st.text_input("Enter Stock Ticker:", "AAPL")
+
+    if st.button("Run Analysis"):
+        with st.spinner("Fetching data and running simulation..."):
+            df = fetch_data(ticker)
+            sim_data = simulate_strategy(df)
+            analysis_text = analyze_with_gpt(sim_data)
+
+        st.subheader("📈 Simulation Data")
+        st.write(sim_data)
+
+        st.subheader("🧠 AI Analysis")
+        st.write(analysis_text)
+
+        st.subheader("📊 Price Chart")
+        st.line_chart(df[["Close", "MA_10", "MA_50"]])
+
+if __name__ == "__main__":
+    main()
